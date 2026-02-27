@@ -45,7 +45,8 @@ def run_pdf_fill_process(user_input: str, definitions: list, pdf_form_path: str)
 
 
 if __name__ == "__main__":
-    file = "[ENTER_DIR_HERE]/FireForm/src/inputs/file.pdf"
+    default_pdf = os.path.join(os.path.dirname(__file__), "inputs", "file.pdf")
+    file = os.getenv("FIREFORM_INPUT_PDF", default_pdf)
     user_input = "Hi. The employee's name is John Doe. His job title is managing director. His department supervisor is Jane Doe. His phone number is 123456. His email is jdoe@ucsc.edu. The signature is <Mamañema>, and the date is 01/02/2005"
     descriptions = ["Employee's name", "Employee's job title", "Employee's department supervisor", "Employee's phone number", "Employee's email", "Signature", "Date"]
     prepared_pdf = "temp_outfile.pdf"
