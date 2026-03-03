@@ -60,12 +60,23 @@ class textToJSON():
                 "stream": False # don't really know why --> look into this later.
             }
 
-            response = requests.post(ollama_url, json=payload)
+            try:
+                response = requests.post(ollama_url, json=payload, timeout=30)
+                response.raise_for_status()
+            except requests.exceptions.RequestException as e:
+                raise RuntimeError(f"Failed to reach Ollama at {ollama_url}: {e}") from e
 
-            # parse response
-            json_data = response.json()
-            parsed_response = json_data['response']
-            # print(parsed_response)
+            try:
+                json_data = response.json()
+            except ValueError as e:
+                raise RuntimeError(f"Ollama returned non-JSON response from {ollama_url}") from e
+
+            if "response" not in json_data:
+                raise RuntimeError(
+                    f"Ollama response missing 'response' key. Payload keys: {list(json_data.keys())}"
+                )
+
+            parsed_response = json_data["response"]
             self.add_response_to_json(field, parsed_response)
             
         print("----------------------------------")
@@ -130,7 +141,7 @@ class Fill():
     def __init__(self):
         pass
     
-    def fill_form(user_input: str, definitions: list, pdf_form: str):
+    def fill_form(self, user_input: str, definitions: list, pdf_form: str):
         """
         Fill a PDF form with values from user_input using testToJSON.
         Fields are filled in the visual order (top-to-bottom, left-to-right).
@@ -148,7 +159,11 @@ class Fill():
         pdf = PdfReader(pdf_form)
 
         # Loop through pages 
-        for page in pdf.pages:
+        pages = pdf.pages
+        if pages is None or not isinstance(pages, list):
+            raise ValueError(f"PDF file '{pdf_form}' could not be read or has no pages")
+        
+        for page in pages:
             if page.Annots:
                 sorted_annots = sorted(
                     page.Annots,
