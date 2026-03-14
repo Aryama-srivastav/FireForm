@@ -68,10 +68,10 @@ class LLM:
                     f"Could not connect to Ollama at {ollama_url}. "
                     "Please ensure Ollama is running and accessible."
                 )
-            except requests.exceptions.Timeout:
+            except requests.exceptions.Timeout as e:
                 raise TimeoutError(
-                    f"Request to Ollama timed out for field '{field}' at {ollama_url}."
-                )
+                    f"Request to Ollama timed out for field '{field}' at {ollama_url}: {e}"
+                ) from e
             except requests.exceptions.HTTPError as e:
                 raise RuntimeError(
                     f"Ollama returned an HTTP error for field '{field}': {e}"
