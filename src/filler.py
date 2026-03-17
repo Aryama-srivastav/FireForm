@@ -3,13 +3,20 @@ from typing import Any, Optional
 from pdfrw import PdfReader, PdfWriter
 from src.semantic_mapper import SemanticMapper
 from datetime import datetime
+from src.validation_gates import ValidationGates
 
 
 class Filler:
     def __init__(self):
         pass
 
-    def fill_form(self, pdf_form: str, llm: Any, template_config: Optional[dict] = None):
+    def fill_form(
+        self,
+        pdf_form: str,
+        llm: Any,
+        template_config: Optional[dict] = None,
+        strict_validation: bool = True,
+    ):
         """
         Fill a PDF form with values extracted by LLM.
 
@@ -17,27 +24,33 @@ class Filler:
         Any unmatched fields fall back to visual-order positional assignment
         (top-to-bottom, left-to-right).
 
-        Parameters
-        ----------
-        pdf_form        : path to the input PDF template
-        llm             : configured LLM instance (main_loop not yet called)
-        template_config : optional per-template mapping hints, e.g.
-                          {
-                            "field_mappings": {"Employee's name": "EmployeeName"},
-                            "aliases":        {"Employee's name": ["name"]},
-                            "required_fields": ["Employee's name", "Date"]
-                          }
+        Validation gates:
+          1) Input -> Extraction
+          2) Extraction -> JSON
+          3) JSON -> PDF
+
+        If strict_validation=True and any gate fails, PDF is not written.
         """
-        output_pdf = (
-            pdf_form[:-4]
-            + "_"
-            + datetime.now().strftime("%Y%m%d_%H%M%S")
-            + "_filled.pdf"
-        )
+        cfg = template_config or {}
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        output_pdf = pdf_form[:-4] + "_" + ts + "_filled.pdf"
+        validation_report_path = pdf_form[:-4] + "_" + ts + "_validation_report.json"
+
+        validation_report = ValidationGates.new_report(source_pdf=pdf_form)
 
         # ── 1. Extract structured data from LLM ──────────────────────────────
         t2j = llm.main_loop()
         textbox_answers = t2j.get_data()  # {json_key: value}
+
+        gate_1 = ValidationGates.input_to_extraction(pdf_form, llm, textbox_answers)
+        validation_report.add_gate(gate_1)
+
+        gate_2 = ValidationGates.extraction_to_json(
+            textbox_answers if isinstance(textbox_answers, dict) else {},
+            cfg,
+        )
+        validation_report.add_gate(gate_2)
 
         # ── 2. Collect PDF widgets in visual order (global across pages) ──────
         pdf = PdfReader(pdf_form)
@@ -51,14 +64,28 @@ class Filler:
                 )
                 for annot in sorted_annots:
                     if annot.Subtype == "/Widget" and annot.T:
-                        # pdfrw wraps field names in parens: e.g. '(EmployeeName)'
                         pdf_field_names.append(annot.T[1:-1])
                         ordered_annots.append(annot)
 
         # ── 3. Semantic mapping ───────────────────────────────────────────────
-        mapper = SemanticMapper(template_config)
+        mapper = SemanticMapper(cfg)
         result = mapper.map(textbox_answers, pdf_field_names)
         print(result.report())
+
+        gate_3 = ValidationGates.json_to_pdf(
+            textbox_answers if isinstance(textbox_answers, dict) else {},
+            pdf_field_names,
+            result,
+            cfg,
+        )
+        validation_report.add_gate(gate_3)
+
+        # Block final output if validation fails
+        if strict_validation and not validation_report.passed:
+            validation_report.write(validation_report_path, output_pdf=None)
+            raise ValueError(
+                f"Validation failed. Report generated at: {validation_report_path}"
+            )
 
         # ── 4. Fill: semantic matches first, positional fallback for the rest ─
         positional_idx = 0
@@ -72,4 +99,6 @@ class Filler:
                 positional_idx += 1
 
         PdfWriter().write(output_pdf, pdf)
+        validation_report.write(validation_report_path, output_pdf=output_pdf)
+
         return output_pdf
