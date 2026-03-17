@@ -1,4 +1,4 @@
-from src.semantic_mapper import SemanticMapper, MappingResult
+from src.semantic_mapper import SemanticMapper
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
