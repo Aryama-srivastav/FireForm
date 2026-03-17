@@ -1,9 +1,9 @@
 from typing import Any, Optional
 
 from pdfrw import PdfReader, PdfWriter
-from src.semantic_mapper import SemanticMapper
+from semantic_mapper import SemanticMapper
 from datetime import datetime
-from src.validation_gates import ValidationGates
+from validation_gates import ValidationGates
 
 
 class Filler:
