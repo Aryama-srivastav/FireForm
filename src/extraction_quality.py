@@ -21,15 +21,21 @@ class ExtractionQualityProcessor:
             self.plural_normalized_fields.add(field)
         if is_ambiguous:
             self.ambiguous_fields.add(field)
-        if self._is_missing(normalized_value):
-            self.missing_fields.add(field)
 
         if existing_value is None:
-            return normalized_value
+            merged_value = normalized_value
+            had_duplicate = False
+        else:
+            merged_value, had_duplicate = self._merge_values(existing_value, normalized_value)
 
-        merged_value, had_duplicate = self._merge_values(existing_value, normalized_value)
         if had_duplicate:
             self.duplicate_fields.add(field)
+
+        if self._is_missing(merged_value):
+            self.missing_fields.add(field)
+        else:
+            # Ensure the field is not reported as missing if the final merged value is present
+            self.missing_fields.discard(field)
 
         return merged_value
 
