@@ -107,3 +107,64 @@ def test_fill_batch_endpoint_missing_template(client, monkeypatch):
     response = client.post("/forms/fill-batch", json=payload)
 
     assert response.status_code == 404
+
+
+def test_fill_batch_endpoint_includes_field_evidence(client, monkeypatch):
+    templates = [
+        SimpleNamespace(id=1, name="Trace Form", pdf_path="trace.pdf", fields={"incident_id": "text"}),
+    ]
+
+    def fake_get_templates_by_ids(db, template_ids):
+        return templates
+
+    def fake_fill_multiple_forms(self, incident_record, templates):
+        return {
+            "batch_id": "batch_trace_001",
+            "total_templates": 1,
+            "successful_count": 1,
+            "failed_count": 0,
+            "package_zip_path": "src/outputs/batches/batch_trace_001.zip",
+            "results": [
+                {
+                    "template_id": 1,
+                    "template_name": "Trace Form",
+                    "status": "success",
+                    "output_pdf_path": "trace_filled.pdf",
+                    "error": None,
+                    "mapping_report": {
+                        "compatible": True,
+                        "missing_fields": [],
+                        "extra_fields": [],
+                        "unmapped_fields": [],
+                        "type_mismatches": {},
+                        "dependency_violations": [],
+                        "warnings": [],
+                        "matched_fields": ["incident_id"],
+                        "field_evidence": {
+                            "incident_id": {
+                                "field_name": "incident_id",
+                                "matched": True,
+                                "source_id": "incident_record",
+                                "method": "direct",
+                                "confidence": 1.0,
+                                "evidence_count": 1,
+                            }
+                        },
+                    },
+                }
+            ],
+        }
+
+    monkeypatch.setattr(forms_route, "get_templates_by_ids", fake_get_templates_by_ids)
+    monkeypatch.setattr(forms_route.Controller, "fill_multiple_forms", fake_fill_multiple_forms)
+
+    payload = {
+        "template_ids": [1],
+        "incident_record": {"incident_id": "INC-TRACE-1"},
+    }
+    response = client.post("/forms/fill-batch", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "field_evidence" in body["results"][0]["mapping_report"]
+    assert body["results"][0]["mapping_report"]["field_evidence"]["incident_id"]["method"] == "direct"
